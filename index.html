@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Add multiple geometries from one GeoJSON source</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        #filters {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background-color: white;
+            padding: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="filters">
+        <div>
+            <!-- <input type="text" id="shop" placeholder="shop name" /><button onclick="filterByShopName()">Filter</button> -->
+            <div id="shop-list"></div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+
+
+    <script>
+        const selectedShops = ["Tesco", "Coop"];
+
+        const shopName = document.getElementById("shop");
+        const shopList = document.getElementById("shop-list");
+
+        mapboxgl.accessToken = 'pk.eyJ1Ijoic3VqYW5jaGFrcmFib3J0eSIsImEiOiJja2Q5MzBuc3owenplMnBzY2I0eDYwdDhvIn0.imItePLDlYNF2BGVde_mkw';
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/satellite-v9',
+            center: { lng: -78.6542006885212, lat: 35.757000686731686 },
+            zoom: 10
+        });
+
+        map.on('load', () => {
+
+            // d3.csv("data/raw-data.csv")
+            //     .then(data => {
+            //         console.log('Store', data);
+
+            //         const pins = data
+            //             //.sort((a, b) => a.lat - b.lat)
+            //             .map(pin => {
+            //                 const { X: lat, Y: lon, all } = pin
+            //                 return {
+            //                     "type": "Feature", "properties": { ...pin },
+            //                     "geometry": {
+            //                         "type": "Point", "coordinates": [+lon, +lat]
+            //                     }
+            //                 }
+            //             })
+            //         const featureCollection = turf.featureCollection(pins)
+            //         map.getSource("traffic").setData(featureCollection)
+            //         console.log('featureCollection', featureCollection);
+            //     })
+
+            d3.csv("data/GoRaleigh Bus Stops (2).csv")
+                .then(data => {
+
+                    const pins = data
+                        .map(pin => {
+                            const { Y: lat, X: lon, all } = pin
+                            return {
+                                "type": "Feature", "properties": { ...pin },
+                                "geometry": {
+                                    "type": "Point", "coordinates": [+lon, +lat]
+                                }
+                            }
+                        })
+                    const featureCollection = turf.featureCollection(pins)
+                    map.getSource("traffic_green").setData(featureCollection)
+                    console.log('featureCollection', featureCollection);
+                })
+
+
+
+            map.addSource('traffic', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'FeatureCollection',
+                    'features': []
+                }
+            });
+            map.addLayer({
+                'id': 'traffic',
+                'type': 'circle',
+                'source': 'traffic',
+                'paint': {
+                    'circle-radius': 5,
+                    'circle-color': 'red'
+                },
+            });
+
+            map.addLayer({
+                'id': 'trafficText',
+                'type': 'symbol',
+                'source': 'traffic',
+                'layout': {
+                    'text-field': ['get', 'all_motor_vehicles'],
+                    'text-size': 10,
+                    'text-transform': 'uppercase',
+                    'text-offset': ['get', 'position'],
+                    'text-allow-overlap': true,
+                    'icon-allow-overlap': true,
+                    // 'text-justify': ['get', 'all_motor_vehicles']
+                },
+                'paint': {
+                    'text-color': '#202',
+
+                },
+            });
+
+            map.addSource('traffic_green', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'FeatureCollection',
+                    'features': []
+                }
+            });
+            map.addLayer({
+                'id': 'traffic_green',
+                'type': 'circle',
+                'source': 'traffic_green',
+                'paint': {
+                    'circle-radius': 5,
+                    'circle-color': 'red',
+                    // "circle-stroke-width": 1,
+                    // "circle-stroke-color": "#000"
+                },
+            });
+
+            map.on('click', 'traffic_green', (e) => {
+                console.log('e', e);
+                // Copy coordinates array.
+                const text = e.features[0].properties;
+                const description = `${text['Stop_ID']} ${text['Stop_Name']}`
+                new mapboxgl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(description)
+                    .addTo(map);
+
+                e.originalEvent.cancelBubble = true;
+            });
+
+            // Change the cursor to a pointer when the mouse is over the places layer.
+            map.on('mouseenter', 'traffic_green', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+
+            // Change it back to a pointer when it leaves.
+            map.on('mouseleave', 'traffic_green', () => {
+                map.getCanvas().style.cursor = '';
+            });
+
+        });
+
+
+        const convertToCsv = (arr) => {
+            const keys = Object.keys(arr[0]);
+            const replacer = (_key, value) => value === null ? '' : value;
+            const processRow = row => keys.map(key => JSON.stringify(row[key], replacer)).join(',');
+            return [keys.join(','), ...arr.map(processRow)].join('\r\n');
+        };
+        const downloadFile = (fileName, data) => {
+            var link = document.createElement('a');
+            link.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(data));
+            link.setAttribute('download', fileName);
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        //map.setFilter('gb',['none'])
+    </script>
+
+</body>
+
+</html>
